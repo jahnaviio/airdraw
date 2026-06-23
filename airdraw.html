@@ -1,312 +1,451 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AR Neon Hand Drawing</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MediaPipe Hand Drawing Camera</title>
 
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            background-color: #000;
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-        }
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
 
-        .container {
-            position: relative;
-            width: 100vw;
-            height: 100vh;
-        }
+html,body{
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#000;
+    font-family:Arial,Helvetica,sans-serif;
+}
 
-        /* Video and Canvases perfectly aligned and horizontally mirrored */
-        video, canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform: scaleX(-1); /* Selfie mirror effect */
-        }
+#container{
+    position:fixed;
+    inset:0;
+    width:100%;
+    height:100%;
+}
 
-        video { z-index: 1; }
-        #draw-canvas { z-index: 2; pointer-events: none; }
-        #tracking-canvas { z-index: 3; pointer-events: none; }
+video{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    transform:scaleX(-1);
+    z-index:1;
+}
 
-        /* Glassmorphism UI Panel */
-        .ui-panel {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            z-index: 10;
-            background: rgba(20, 20, 20, 0.4);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 20px;
-            padding: 25px;
-            color: #fff;
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-            min-width: 200px;
-        }
+#drawCanvas,
+#debugCanvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    pointer-events:none;
+}
 
-        .ui-panel h2 {
-            margin: 0;
-            font-size: 1.4rem;
-            text-align: center;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-        }
+#drawCanvas{
+    z-index:3;
+    background:transparent;
+}
 
-        .control-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
+#debugCanvas{
+    z-index:4;
+}
 
-        .control-group label {
-            font-size: 0.9rem;
-            color: #ccc;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
+.controls{
+    position:fixed;
+    top:20px;
+    left:20px;
+    z-index:10;
 
-        input[type="color"] {
-            width: 100%;
-            height: 40px;
-            border: none;
-            border-radius: 8px;
-            background: transparent;
-            cursor: pointer;
-        }
-        
-        input[type="range"] {
-            width: 100%;
-            cursor: pointer;
-        }
+    background:rgba(255,255,255,0.15);
+    backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);
 
-        #status-display {
-            background: rgba(0, 0, 0, 0.5);
-            padding: 15px;
-            border-radius: 12px;
-            text-align: center;
-            font-size: 1.5rem;
-            font-weight: bold;
-            letter-spacing: 2px;
-            transition: all 0.3s ease;
-        }
+    border:1px solid rgba(255,255,255,0.2);
+    border-radius:18px;
+    padding:16px;
+    color:white;
+    min-width:220px;
+}
 
-        .instructions {
-            font-size: 0.8rem;
-            color: #aaa;
-            line-height: 1.4;
-            margin-top: 10px;
-        }
-        .instructions span { color: #fff; font-weight: bold; }
-    </style>
+.controls h3{
+    margin-bottom:10px;
+    font-size:16px;
+}
+
+.control-group{
+    margin-bottom:12px;
+}
+
+label{
+    display:block;
+    margin-bottom:6px;
+    font-size:14px;
+}
+
+input[type="color"]{
+    width:100%;
+    height:45px;
+    border:none;
+    border-radius:10px;
+    background:none;
+    cursor:pointer;
+}
+
+input[type="range"]{
+    width:100%;
+}
+
+#status{
+    position:fixed;
+    bottom:25px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:20;
+
+    background:rgba(0,0,0,0.45);
+    backdrop-filter:blur(12px);
+
+    color:#fff;
+    font-size:18px;
+    font-weight:bold;
+    padding:14px 26px;
+    border-radius:50px;
+    letter-spacing:2px;
+    border:1px solid rgba(255,255,255,0.2);
+}
+
+.status-drawing{
+    color:#00ff88;
+}
+
+.status-paused{
+    color:#ffd700;
+}
+
+.status-clearing{
+    color:#ff5555;
+}
+
+@media(max-width:768px){
+    .controls{
+        left:10px;
+        top:10px;
+        min-width:190px;
+        padding:12px;
+    }
+}
+</style>
 </head>
 <body>
 
-    <div class="container">
-        <video id="video" autoplay playsinline></video>
-        
-        <canvas id="draw-canvas"></canvas>
-        
-        <canvas id="tracking-canvas"></canvas>
+<div id="container">
 
-        <div class="ui-panel">
-            <h2>AR Painter</h2>
-            
-            <div id="status-display" style="color: #00ffff; text-shadow: 0 0 10px #00ffff;">STARTING...</div>
+    <!-- Webcam always visible -->
+    <video id="video" autoplay playsinline muted></video>
 
-            <div class="control-group">
-                <label for="color">Neon Color</label>
-                <input type="color" id="color" value="#00ffff">
-            </div>
+    <!-- Transparent drawing layer -->
+    <canvas id="drawCanvas"></canvas>
 
-            <div class="control-group">
-                <label for="size">Brush Size</label>
-                <input type="range" id="size" min="2" max="30" value="8">
-            </div>
+    <!-- Landmark debugging layer -->
+    <canvas id="debugCanvas"></canvas>
 
-            <div class="instructions">
-                Gestures:<br>
-                <span>☝️ 1 Finger:</span> Draw<br>
-                <span>✊ Closed Fist:</span> Pause<br>
-                <span>🖐️ Open Palm:</span> Clear Canvas
-            </div>
-        </div>
+</div>
+
+<div class="controls">
+    <h3>🎨 Hand Drawing</h3>
+
+    <div class="control-group">
+        <label>Color</label>
+        <input type="color" id="colorPicker" value="#00ffff">
     </div>
 
-    <script>
-        const videoElement = document.getElementById('video');
-        const trackingCanvas = document.getElementById('tracking-canvas');
-        const trackingCtx = trackingCanvas.getContext('2d');
-        const drawCanvas = document.getElementById('draw-canvas');
-        const drawCtx = drawCanvas.getContext('2d');
-        
-        const statusDisplay = document.getElementById('status-display');
-        const colorPicker = document.getElementById('color');
-        const sizeSlider = document.getElementById('size');
+    <div class="control-group">
+        <label>Brush Size</label>
+        <input type="range" id="brushSize" min="2" max="40" value="8">
+    </div>
+</div>
 
-        let lastX = null;
-        let lastY = null;
+<div id="status" class="status-paused">
+    PAUSED
+</div>
 
-        // Ensure canvases match the raw video resolution for perfect alignment
-        videoElement.addEventListener('loadeddata', () => {
-            const vw = videoElement.videoWidth;
-            const vh = videoElement.videoHeight;
-            trackingCanvas.width = vw;
-            trackingCanvas.height = vh;
-            drawCanvas.width = vw;
-            drawCanvas.height = vh;
-        });
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
 
-        // Helper function to determine if a specific finger is extended
-        function isFingerExtended(landmarks, tipIdx, pipIdx, mcpIdx) {
-            const tip = landmarks[tipIdx];
-            const pip = landmarks[pipIdx];
-            const mcp = landmarks[mcpIdx];
-            
-            // Calculate distances from MCP (knuckle)
-            const distTip = Math.hypot(tip.x - mcp.x, tip.y - mcp.y);
-            const distPip = Math.hypot(pip.x - mcp.x, pip.y - mcp.y);
-            
-            // If the tip is further from the knuckle than the middle joint, it is extended
-            return distTip > distPip;
+<script>
+const video = document.getElementById("video");
+const drawCanvas = document.getElementById("drawCanvas");
+const debugCanvas = document.getElementById("debugCanvas");
+
+const drawCtx = drawCanvas.getContext("2d");
+const debugCtx = debugCanvas.getContext("2d");
+
+const colorPicker = document.getElementById("colorPicker");
+const brushSize = document.getElementById("brushSize");
+const statusEl = document.getElementById("status");
+
+let currentColor = colorPicker.value;
+let currentSize = parseInt(brushSize.value);
+
+let lastPoint = null;
+let currentHand = null;
+let currentMode = "PAUSED";
+let clearCooldown = false;
+
+function resizeCanvas(){
+    drawCanvas.width = window.innerWidth;
+    drawCanvas.height = window.innerHeight;
+
+    debugCanvas.width = window.innerWidth;
+    debugCanvas.height = window.innerHeight;
+}
+
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
+
+colorPicker.addEventListener("input", ()=>{
+    currentColor = colorPicker.value;
+});
+
+brushSize.addEventListener("input", ()=>{
+    currentSize = parseInt(brushSize.value);
+});
+
+function setStatus(mode){
+    currentMode = mode;
+    statusEl.textContent = mode;
+
+    statusEl.className = "";
+
+    if(mode==="DRAWING"){
+        statusEl.classList.add("status-drawing");
+    }else if(mode==="CLEARING"){
+        statusEl.classList.add("status-clearing");
+    }else{
+        statusEl.classList.add("status-paused");
+    }
+}
+
+function fingerExtended(tip,pip,landmarks){
+    return landmarks[tip].y < landmarks[pip].y;
+}
+
+function detectGesture(landmarks){
+
+    const indexUp = fingerExtended(8,6,landmarks);
+    const middleUp = fingerExtended(12,10,landmarks);
+    const ringUp = fingerExtended(16,14,landmarks);
+    const pinkyUp = fingerExtended(20,18,landmarks);
+
+    const total =
+        (indexUp?1:0)+
+        (middleUp?1:0)+
+        (ringUp?1:0)+
+        (pinkyUp?1:0);
+
+    if(indexUp && total===1){
+        return "DRAWING";
+    }
+
+    if(indexUp && middleUp && ringUp && pinkyUp){
+        return "CLEARING";
+    }
+
+    return "PAUSED";
+}
+
+function clearDrawing(){
+    drawCtx.clearRect(
+        0,
+        0,
+        drawCanvas.width,
+        drawCanvas.height
+    );
+}
+
+function drawNeonLine(x1,y1,x2,y2){
+
+    drawCtx.save();
+
+    drawCtx.lineCap="round";
+    drawCtx.lineJoin="round";
+
+    drawCtx.strokeStyle=currentColor;
+    drawCtx.lineWidth=currentSize;
+
+    drawCtx.shadowColor=currentColor;
+    drawCtx.shadowBlur=currentSize*2;
+
+    drawCtx.beginPath();
+    drawCtx.moveTo(x1,y1);
+    drawCtx.lineTo(x2,y2);
+    drawCtx.stroke();
+
+    drawCtx.restore();
+}
+
+function render(){
+
+    requestAnimationFrame(render);
+
+    debugCtx.clearRect(
+        0,
+        0,
+        debugCanvas.width,
+        debugCanvas.height
+    );
+
+    if(!currentHand){
+        lastPoint = null;
+        return;
+    }
+
+    const landmarks = currentHand;
+    const gesture = detectGesture(landmarks);
+
+    setStatus(gesture);
+
+    if(gesture==="CLEARING"){
+
+        if(!clearCooldown){
+
+            clearCooldown=true;
+            clearDrawing();
+
+            setStatus("CLEARING");
+
+            setTimeout(()=>{
+                clearCooldown=false;
+            },800);
         }
 
-        // Main callback for MediaPipe Hands results
-        function onResults(results) {
-            // Clear the tracking layer every frame
-            trackingCtx.save();
-            trackingCtx.clearRect(0, 0, trackingCanvas.width, trackingCanvas.height);
+        lastPoint=null;
+    }
 
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                const landmarks = results.multiHandLandmarks[0];
+    const tip = landmarks[8];
 
-                // Draw standard hand landmarks for debugging
-                drawConnectors(trackingCtx, landmarks, HAND_CONNECTIONS, {color: 'rgba(0, 255, 0, 0.5)', lineWidth: 2});
-                drawLandmarks(trackingCtx, landmarks, {color: 'rgba(255, 0, 0, 0.8)', lineWidth: 1, radius: 3});
+    const x =
+        (1-tip.x) *
+        drawCanvas.width;
 
-                // Check extension state of fingers
-                const indexExtended = isFingerExtended(landmarks, 8, 6, 5);
-                const middleExtended = isFingerExtended(landmarks, 12, 10, 9);
-                const ringExtended = isFingerExtended(landmarks, 16, 14, 13);
-                const pinkyExtended = isFingerExtended(landmarks, 20, 18, 17);
+    const y =
+        tip.y *
+        drawCanvas.height;
 
-                // Determine gesture state
-                let gesture = 'UNKNOWN';
-                if (indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
-                    gesture = 'DRAW';
-                } else if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
-                    gesture = 'PAUSE';
-                } else if (indexExtended && middleExtended && ringExtended && pinkyExtended) {
-                    gesture = 'CLEAR';
-                }
+    if(gesture==="DRAWING"){
 
-                // Map normalized MediaPipe coordinates (0.0 to 1.0) to canvas pixels
-                const indexTip = landmarks[8];
-                const currentX = indexTip.x * drawCanvas.width;
-                const currentY = indexTip.y * drawCanvas.height;
+        if(lastPoint){
 
-                // Handle gestures
-                if (gesture === 'DRAW') {
-                    updateStatus('DRAWING', '#00ff00');
-                    
-                    if (lastX !== null && lastY !== null) {
-                        drawCtx.beginPath();
-                        drawCtx.moveTo(lastX, lastY);
-                        drawCtx.lineTo(currentX, currentY);
-                        
-                        // Neon glowing style
-                        const brushColor = colorPicker.value;
-                        drawCtx.strokeStyle = brushColor;
-                        drawCtx.lineWidth = sizeSlider.value;
-                        drawCtx.lineCap = 'round';
-                        drawCtx.lineJoin = 'round';
-                        drawCtx.shadowBlur = parseInt(sizeSlider.value) * 2;
-                        drawCtx.shadowColor = brushColor;
-                        
-                        drawCtx.stroke();
-                    }
-                    lastX = currentX;
-                    lastY = currentY;
+            drawNeonLine(
+                lastPoint.x,
+                lastPoint.y,
+                x,
+                y
+            );
+        }
 
-                } else if (gesture === 'PAUSE') {
-                    updateStatus('PAUSED', '#ffaa00');
-                    lastX = null;
-                    lastY = null;
+        lastPoint={x,y};
 
-                } else if (gesture === 'CLEAR') {
-                    updateStatus('CLEARING', '#ff0000');
-                    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
-                    lastX = null;
-                    lastY = null;
+    }else{
+        lastPoint=null;
+    }
 
-                } else {
-                    lastX = null;
-                    lastY = null;
-                }
-            } else {
-                updateStatus('NO HAND', '#ffffff');
-                lastX = null;
-                lastY = null;
+    drawConnectors(
+        debugCtx,
+        landmarks,
+        HAND_CONNECTIONS,
+        {
+            color:"#00FF00",
+            lineWidth:2
+        }
+    );
+
+    drawLandmarks(
+        debugCtx,
+        landmarks,
+        {
+            color:"#FF0000",
+            radius:4
+        }
+    );
+}
+
+const hands = new Hands({
+    locateFile:(file)=>{
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    }
+});
+
+hands.setOptions({
+    maxNumHands:1,
+    modelComplexity:1,
+    minDetectionConfidence:0.7,
+    minTrackingConfidence:0.7
+});
+
+hands.onResults((results)=>{
+
+    if(
+        results.multiHandLandmarks &&
+        results.multiHandLandmarks.length
+    ){
+        currentHand =
+            results.multiHandLandmarks[0];
+    }else{
+        currentHand=null;
+    }
+});
+
+async function startCamera(){
+
+    try{
+
+        const stream =
+            await navigator.mediaDevices.getUserMedia({
+                video:{
+                    facingMode:"user"
+                },
+                audio:false
+            });
+
+        video.srcObject=stream;
+
+        await video.play();
+
+        const camera = new Camera(
+            video,
+            {
+                onFrame: async ()=>{
+                    await hands.send({
+                        image: video
+                    });
+                },
+                width:1280,
+                height:720
             }
-            
-            trackingCtx.restore();
-        }
+        );
 
-        // Helper to update the UI status display
-        function updateStatus(text, color) {
-            if (statusDisplay.innerText !== text) {
-                statusDisplay.innerText = text;
-                statusDisplay.style.color = color;
-                statusDisplay.style.textShadow = `0 0 15px ${color}`;
-            }
-        }
+        camera.start();
 
-        // Initialize MediaPipe Hands
-        const hands = new Hands({locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        }});
-        
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.7,
-            minTrackingConfidence: 0.7
-        });
-        
-        hands.onResults(onResults);
+    }catch(err){
 
-        // Initialize Camera (uses requestAnimationFrame implicitly via onFrame)
-        const camera = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({image: videoElement});
-            },
-            width: 1280,
-            height: 720
-        });
-        
-        camera.start().then(() => {
-            updateStatus('READY', '#00ff00');
-        }).catch((err) => {
-            updateStatus('CAMERA ERROR', '#ff0000');
-            console.error(err);
-        });
-    </script>
+        alert(
+            "Camera access denied or unavailable."
+        );
+
+        console.error(err);
+    }
+}
+
+startCamera();
+render();
+</script>
+
 </body>
 </html>
