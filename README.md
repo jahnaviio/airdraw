@@ -1,39 +1,61 @@
-# 🌟 Neon Hand Tracker Drawing App
+AR Neon Hand Drawing
+A web-based Augmented Reality (AR) application that lets you draw neon glowing lines in the air using your hand and a webcam. Powered by MediaPipe Hands and pure JavaScript, this app runs entirely in your browser with no installation required.
 
-A browser-based, interactive drawing application that uses your webcam and **MediaPipe Hands** to track your hand gestures in real-time. Draw glowing neon trails with your index finger, erase with an open palm, and pause drawing by closing your fist!
+✨ Features
+Real-time Hand Tracking: Uses Google's MediaPipe to accurately track 21 hand landmarks in real-time.
 
-## ✨ Features
+Intuitive Gesture Controls: Draw, pause, and clear the canvas using simple hand gestures.
 
-* **🖐️ Real-time Gesture Control:** * **Draw:** Point your Index Finger up.
-  * **Erase:** Hold an Open Palm.
-  * **Pause:** Make a Closed Fist.
-* **🖌️ Customizable Brushes:** Change the neon glow color and adjust the brush thickness via an intuitive UI panel.
-* **✨ Neon Glow Effects:** Utilizes HTML5 Canvas shadows and composite operations to create a vibrant, glowing aesthetic on a dark canvas.
-* **🎯 Live Cursor Tracking:** A secondary overlay canvas tracks your hand position so you always know where your brush is before you draw or erase.
-* **🚀 Zero Setup:** 100% client-side. No backend required! Everything runs in a single HTML file.
+AR Overlay: Draws on a transparent canvas directly over your live, fullscreen webcam feed.
 
-## 🛠️ Tech Stack
+Neon Glow Effect: Features smooth, customizable glowing strokes.
 
-* **HTML5 / CSS3:** For the UI and layout.
-* **JavaScript (ES6):** Core application logic.
-* **Canvas API:** For rendering the drawing and live cursor.
-* **[MediaPipe Hands](https://google.github.io/mediapipe/solutions/hands.html):** For robust, real-time hand and finger tracking.
+Glassmorphism UI: Modern, floating control panel with a frosted glass effect.
 
-## 🚀 How to Run Locally
+Selfie Mode: The camera feed is horizontally mirrored for a natural drawing experience.
 
-Because modern web browsers restrict webcam access for security reasons, simply double-clicking the `index.html` file might not work. You need to serve the file over a local server.
+Cross-Platform: Works on modern desktop and mobile browsers.
 
-### Option 1: Using VS Code (Recommended)
-1. Install the [Live Server](https://marketplace.visualstudio.com/items?itemName=ritwickdey.LiveServer) extension in Visual Studio Code.
-2. Open the folder containing the HTML file.
-3. Right-click the file and select **"Open with Live Server"**.
-4. Allow camera permissions in your browser.
+🖐️ Gesture Controls
+The app tracks your hand and responds to three specific gestures:
 
-### Option 2: Using Python
-If you have Python installed, you can easily spin up a local server from your terminal:
-1. Open your terminal or command prompt.
-2. Navigate to the directory containing your HTML file.
-3. Run the following command:
-   ```bash
-   # For Python 3.x
-   python -m http.server 8000
+☝️ Draw (Index Finger Extended): Extend only your index finger to draw. The line will follow your fingertip.
+
+✊ Pause (Closed Fist): Close all your fingers into a fist to stop drawing and move your hand around without leaving a trail.
+
+🖐️ Clear (Open Palm): Extend all five fingers fully to clear the entire canvas.
+
+🚀 How to Run
+Because this is a single, self-contained HTML file, running it is incredibly simple:
+
+Save the provided code as an HTML file (e.g., ar-draw.html).
+
+Double-click the file to open it in your preferred modern web browser (Chrome, Edge, Firefox, Safari).
+
+Grant Camera Permissions: The browser will ask for permission to use your webcam. You must click Allow for the app to function.
+
+Wait a moment for the MediaPipe machine learning models to load (the status will change from "STARTING..." to "READY").
+
+Step back, hold up your hand, and start drawing!
+
+Note: If your browser blocks webcam access from file:// URLs for security reasons, you may need to run a simple local web server (like VS Code's "Live Server" extension or Python's python -m http.server).
+
+🛠️ Configuration
+You can customize your drawing experience using the floating UI panel on the top left of the screen:
+
+Neon Color: Click the color picker to change the color of your glowing stroke.
+
+Brush Size: Adjust the slider to make the stroke thinner or thicker. The neon glow scales automatically with the brush size.
+
+💻 Tech Stack
+HTML5 & CSS3: For layout, fullscreen video handling, and the Glassmorphism UI.
+
+Vanilla JavaScript: For application logic and Canvas API rendering.
+
+MediaPipe:
+
+@mediapipe/camera_utils
+
+@mediapipe/hands
+
+@mediapipe/drawing_utils
