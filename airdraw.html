@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MediaPipe Neon Air Drawing</title>
+<title>MediaPipe Air Drawing</title>
 
 <style>
 *{
@@ -16,43 +16,25 @@ html,body{
     width:100%;
     height:100%;
     overflow:hidden;
-    background:#000;
-    font-family:Arial,sans-serif;
+    font-family:Arial, sans-serif;
 }
 
-#container{
+#video{
     position:fixed;
-    inset:0;
-    width:100%;
-    height:100%;
-}
-
-video{
-    position:absolute;
     inset:0;
     width:100%;
     height:100%;
     object-fit:cover;
     transform:scaleX(-1);
-    z-index:1;
-    background:#000;
+    z-index:0;
 }
 
 #drawCanvas{
-    position:absolute;
+    position:fixed;
     inset:0;
     width:100%;
     height:100%;
-    z-index:2;
-    pointer-events:none;
-}
-
-#landmarkCanvas{
-    position:absolute;
-    inset:0;
-    width:100%;
-    height:100%;
-    z-index:3;
+    z-index:1;
     pointer-events:none;
 }
 
@@ -60,67 +42,30 @@ video{
     position:fixed;
     top:15px;
     left:15px;
-    z-index:100;
+    z-index:10;
     display:flex;
+    align-items:center;
     gap:12px;
-    flex-wrap:wrap;
-    align-items:center;
-    padding:12px;
-    border-radius:16px;
-    background:rgba(0,0,0,0.45);
-    backdrop-filter:blur(10px);
-    color:white;
-}
-
-label{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    font-size:14px;
-}
-
-input[type="color"]{
-    width:45px;
-    height:40px;
-    border:none;
-    background:none;
-    cursor:pointer;
-}
-
-.status{
-    position:fixed;
-    top:15px;
-    right:15px;
-    z-index:100;
-    padding:12px 18px;
+    padding:10px 14px;
     border-radius:14px;
-    background:rgba(0,0,0,0.5);
-    color:#fff;
-    font-weight:bold;
-    backdrop-filter:blur(10px);
+    background:rgba(255,255,255,0.75);
+    backdrop-filter:blur(8px);
 }
 
-.clearBtn{
-    padding:8px 12px;
-    border:none;
-    border-radius:10px;
-    cursor:pointer;
-    font-weight:bold;
+.controls label{
+    font-size:14px;
+    color:#222;
+}
+
+input[type="range"]{
+    width:120px;
 }
 </style>
 </head>
 <body>
 
-<div id="container">
-    <!-- IMPORTANT: CAMERA IS BACKGROUND -->
-    <video id="video" autoplay playsinline muted></video>
-
-    <!-- TRANSPARENT DRAWING LAYER -->
-    <canvas id="drawCanvas"></canvas>
-
-    <!-- HAND LANDMARKS -->
-    <canvas id="landmarkCanvas"></canvas>
-</div>
+<video id="video" autoplay playsinline muted></video>
+<canvas id="drawCanvas"></canvas>
 
 <div class="controls">
     <label>
@@ -130,16 +75,8 @@ input[type="color"]{
 
     <label>
         Size
-        <input type="range" id="brushSize" min="2" max="30" value="8">
+        <input type="range" id="brushSize" min="2" max="40" value="8">
     </label>
-
-    <button class="clearBtn" id="clearBtn">
-        Clear
-    </button>
-</div>
-
-<div class="status" id="status">
-    Waiting...
 </div>
 
 <script type="module">
@@ -150,54 +87,44 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 
 const video = document.getElementById("video");
-
-const drawCanvas = document.getElementById("drawCanvas");
-const drawCtx = drawCanvas.getContext("2d");
-
-const landmarkCanvas = document.getElementById("landmarkCanvas");
-const landmarkCtx = landmarkCanvas.getContext("2d");
-
-const statusEl = document.getElementById("status");
+const canvas = document.getElementById("drawCanvas");
+const ctx = canvas.getContext("2d");
 
 const colorPicker = document.getElementById("colorPicker");
 const brushSize = document.getElementById("brushSize");
 
 let handLandmarker;
-let drawing = false;
-let lastPoint = null;
+let running = true;
 
-function resizeCanvases(){
-    drawCanvas.width = window.innerWidth;
-    drawCanvas.height = window.innerHeight;
+let prevX = null;
+let prevY = null;
 
-    landmarkCanvas.width = window.innerWidth;
-    landmarkCanvas.height = window.innerHeight;
+function resizeCanvas(){
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 }
-resizeCanvases();
-window.addEventListener("resize", resizeCanvases);
+resizeCanvas();
+window.addEventListener("resize", resizeCanvas);
 
 async function startCamera(){
-
     const stream = await navigator.mediaDevices.getUserMedia({
         video:{
             width:{ideal:1280},
-            height:{ideal:720},
-            facingMode:"user"
-        },
-        audio:false
+            height:{ideal:720}
+        }
     });
 
     video.srcObject = stream;
 
     return new Promise(resolve=>{
-        video.onloadedmetadata=()=>{
+        video.onloadedmetadata = ()=>{
             video.play();
             resolve();
         };
     });
 }
 
-async function loadMediaPipe(){
+async function loadHandTracking(){
 
     const vision = await FilesetResolver.forVisionTasks(
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
@@ -216,12 +143,6 @@ async function loadMediaPipe(){
     );
 }
 
-function clearDrawing(){
-    drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
-}
-
-document.getElementById("clearBtn").onclick = clearDrawing;
-
 function distance(a,b){
     return Math.hypot(a.x-b.x,a.y-b.y);
 }
@@ -230,218 +151,141 @@ function isFingerExtended(tip,pip){
     return tip.y < pip.y;
 }
 
-function detectGesture(hand){
+function detectGesture(landmarks){
 
-    const indexExtended =
-        isFingerExtended(hand[8], hand[6]);
+    const thumbTip = landmarks[4];
+    const thumbIp  = landmarks[3];
 
-    const middleExtended =
-        isFingerExtended(hand[12], hand[10]);
+    const indexTip = landmarks[8];
+    const indexPip = landmarks[6];
 
-    const ringExtended =
-        isFingerExtended(hand[16], hand[14]);
+    const middleTip = landmarks[12];
+    const middlePip = landmarks[10];
 
-    const pinkyExtended =
-        isFingerExtended(hand[20], hand[18]);
+    const ringTip = landmarks[16];
+    const ringPip = landmarks[14];
 
-    const count =
-        Number(indexExtended)+
-        Number(middleExtended)+
-        Number(ringExtended)+
-        Number(pinkyExtended);
+    const pinkyTip = landmarks[20];
+    const pinkyPip = landmarks[18];
 
-    if(
-        indexExtended &&
-        !middleExtended &&
-        !ringExtended &&
-        !pinkyExtended
-    ){
-        return "DRAW";
+    const indexUp = isFingerExtended(indexTip,indexPip);
+    const middleUp = isFingerExtended(middleTip,middlePip);
+    const ringUp = isFingerExtended(ringTip,ringPip);
+    const pinkyUp = isFingerExtended(pinkyTip,pinkyPip);
+
+    const thumbOpen =
+        distance(thumbTip,indexTip) > 0.10;
+
+    // Open Palm -> Clear
+    if(indexUp && middleUp && ringUp && pinkyUp && thumbOpen){
+        return "erase";
     }
 
-    if(count >= 4){
-        return "CLEAR";
+    // One Index Finger -> Draw
+    if(indexUp && !middleUp && !ringUp && !pinkyUp){
+        return "draw";
     }
 
-    if(count === 0){
-        return "PAUSE";
+    // Closed Fist -> Pause
+    if(!indexUp && !middleUp && !ringUp && !pinkyUp){
+        return "pause";
     }
 
-    return "PAUSE";
+    return "pause";
 }
 
-function drawNeonLine(x1,y1,x2,y2){
+function drawNeon(x,y){
 
     const color = colorPicker.value;
     const size = Number(brushSize.value);
 
-    drawCtx.lineCap="round";
-    drawCtx.lineJoin="round";
-
-    drawCtx.shadowBlur=size*3;
-    drawCtx.shadowColor=color;
-
-    drawCtx.strokeStyle=color;
-    drawCtx.lineWidth=size;
-
-    drawCtx.beginPath();
-    drawCtx.moveTo(x1,y1);
-    drawCtx.lineTo(x2,y2);
-    drawCtx.stroke();
-
-    drawCtx.shadowBlur=size*6;
-    drawCtx.lineWidth=size/2;
-
-    drawCtx.beginPath();
-    drawCtx.moveTo(x1,y1);
-    drawCtx.lineTo(x2,y2);
-    drawCtx.stroke();
-}
-
-function drawLandmarks(hand){
-
-    landmarkCtx.clearRect(
-        0,
-        0,
-        landmarkCanvas.width,
-        landmarkCanvas.height
-    );
-
-    landmarkCtx.fillStyle="#00ff88";
-
-    for(const lm of hand){
-
-        const x =
-            (1-lm.x) *
-            landmarkCanvas.width;
-
-        const y =
-            lm.y *
-            landmarkCanvas.height;
-
-        landmarkCtx.beginPath();
-        landmarkCtx.arc(x,y,4,0,Math.PI*2);
-        landmarkCtx.fill();
+    if(prevX === null || prevY === null){
+        prevX = x;
+        prevY = y;
+        return;
     }
+
+    ctx.save();
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = size;
+
+    ctx.shadowColor = color;
+    ctx.shadowBlur = size * 2.5;
+
+    ctx.beginPath();
+    ctx.moveTo(prevX, prevY);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+
+    ctx.restore();
+
+    prevX = x;
+    prevY = y;
 }
 
-let lastVideoTime = -1;
+function clearDrawing(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+}
 
 async function predict(){
 
-    if(video.readyState < 2){
+    if(!running){
         requestAnimationFrame(predict);
         return;
     }
 
-    if(video.currentTime !== lastVideoTime){
+    if(video.readyState >= 2){
 
-        lastVideoTime = video.currentTime;
-
-        const result =
-            handLandmarker.detectForVideo(
-                video,
-                performance.now()
-            );
-
-        landmarkCtx.clearRect(
-            0,
-            0,
-            landmarkCanvas.width,
-            landmarkCanvas.height
+        const results = handLandmarker.detectForVideo(
+            video,
+            performance.now()
         );
 
-        if(result.landmarks.length){
+        if(results.landmarks.length){
 
-            const hand = result.landmarks[0];
+            const lm = results.landmarks[0];
 
-            drawLandmarks(hand);
+            const gesture = detectGesture(lm);
 
-            const gesture =
-                detectGesture(hand);
+            const tip = lm[8];
 
-            if(gesture==="CLEAR"){
+            const x = (1 - tip.x) * canvas.width;
+            const y = tip.y * canvas.height;
 
-                statusEl.textContent =
-                    "🧹 Clear";
+            if(gesture === "draw"){
+
+                drawNeon(x,y);
+
+            }else if(gesture === "erase"){
 
                 clearDrawing();
-                drawing=false;
-                lastPoint=null;
-            }
+                prevX = null;
+                prevY = null;
 
-            else if(gesture==="PAUSE"){
+            }else{
 
-                statusEl.textContent =
-                    "⏸ Paused";
-
-                drawing=false;
-                lastPoint=null;
-            }
-
-            else if(gesture==="DRAW"){
-
-                statusEl.textContent =
-                    "✏️ Drawing";
-
-                drawing=true;
-
-                const tip = hand[8];
-
-                const x =
-                    (1-tip.x) *
-                    drawCanvas.width;
-
-                const y =
-                    tip.y *
-                    drawCanvas.height;
-
-                if(lastPoint){
-
-                    drawNeonLine(
-                        lastPoint.x,
-                        lastPoint.y,
-                        x,
-                        y
-                    );
-                }
-
-                lastPoint={x,y};
+                prevX = null;
+                prevY = null;
             }
 
         }else{
-
-            statusEl.textContent =
-                "No Hand";
-
-            drawing=false;
-            lastPoint=null;
+            prevX = null;
+            prevY = null;
         }
     }
 
     requestAnimationFrame(predict);
 }
 
-(async()=>{
+(async ()=>{
 
-    try{
-
-        await startCamera();
-
-        // CAMERA STAYS FULLSCREEN
-        // DRAWING CANVAS IS TRANSPARENT
-
-        await loadMediaPipe();
-
-        predict();
-
-    }catch(err){
-
-        console.error(err);
-
-        statusEl.textContent =
-            "Camera Permission Required";
-    }
+    await startCamera();
+    await loadHandTracking();
+    predict();
 
 })();
 </script>
