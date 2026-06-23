@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MediaPipe Hand Drawing Camera</title>
+<title>MediaPipe Neon Air Drawing</title>
 
 <style>
 *{
@@ -17,7 +17,7 @@ html,body{
     height:100%;
     overflow:hidden;
     background:#000;
-    font-family:Arial,Helvetica,sans-serif;
+    font-family:Arial,sans-serif;
 }
 
 #container{
@@ -35,416 +35,415 @@ video{
     object-fit:cover;
     transform:scaleX(-1);
     z-index:1;
+    background:#000;
 }
 
-#drawCanvas,
-#debugCanvas{
+#drawCanvas{
     position:absolute;
     inset:0;
     width:100%;
     height:100%;
+    z-index:2;
     pointer-events:none;
 }
 
-#drawCanvas{
+#landmarkCanvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
     z-index:3;
-    background:transparent;
-}
-
-#debugCanvas{
-    z-index:4;
+    pointer-events:none;
 }
 
 .controls{
     position:fixed;
-    top:20px;
-    left:20px;
-    z-index:10;
-
-    background:rgba(255,255,255,0.15);
-    backdrop-filter:blur(18px);
-    -webkit-backdrop-filter:blur(18px);
-
-    border:1px solid rgba(255,255,255,0.2);
-    border-radius:18px;
-    padding:16px;
+    top:15px;
+    left:15px;
+    z-index:100;
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    align-items:center;
+    padding:12px;
+    border-radius:16px;
+    background:rgba(0,0,0,0.45);
+    backdrop-filter:blur(10px);
     color:white;
-    min-width:220px;
-}
-
-.controls h3{
-    margin-bottom:10px;
-    font-size:16px;
-}
-
-.control-group{
-    margin-bottom:12px;
 }
 
 label{
-    display:block;
-    margin-bottom:6px;
+    display:flex;
+    align-items:center;
+    gap:8px;
     font-size:14px;
 }
 
 input[type="color"]{
-    width:100%;
-    height:45px;
+    width:45px;
+    height:40px;
     border:none;
-    border-radius:10px;
     background:none;
     cursor:pointer;
 }
 
-input[type="range"]{
-    width:100%;
-}
-
-#status{
+.status{
     position:fixed;
-    bottom:25px;
-    left:50%;
-    transform:translateX(-50%);
-    z-index:20;
-
-    background:rgba(0,0,0,0.45);
-    backdrop-filter:blur(12px);
-
+    top:15px;
+    right:15px;
+    z-index:100;
+    padding:12px 18px;
+    border-radius:14px;
+    background:rgba(0,0,0,0.5);
     color:#fff;
-    font-size:18px;
     font-weight:bold;
-    padding:14px 26px;
-    border-radius:50px;
-    letter-spacing:2px;
-    border:1px solid rgba(255,255,255,0.2);
+    backdrop-filter:blur(10px);
 }
 
-.status-drawing{
-    color:#00ff88;
-}
-
-.status-paused{
-    color:#ffd700;
-}
-
-.status-clearing{
-    color:#ff5555;
-}
-
-@media(max-width:768px){
-    .controls{
-        left:10px;
-        top:10px;
-        min-width:190px;
-        padding:12px;
-    }
+.clearBtn{
+    padding:8px 12px;
+    border:none;
+    border-radius:10px;
+    cursor:pointer;
+    font-weight:bold;
 }
 </style>
 </head>
 <body>
 
 <div id="container">
-
-    <!-- Webcam always visible -->
+    <!-- IMPORTANT: CAMERA IS BACKGROUND -->
     <video id="video" autoplay playsinline muted></video>
 
-    <!-- Transparent drawing layer -->
+    <!-- TRANSPARENT DRAWING LAYER -->
     <canvas id="drawCanvas"></canvas>
 
-    <!-- Landmark debugging layer -->
-    <canvas id="debugCanvas"></canvas>
-
+    <!-- HAND LANDMARKS -->
+    <canvas id="landmarkCanvas"></canvas>
 </div>
 
 <div class="controls">
-    <h3>🎨 Hand Drawing</h3>
-
-    <div class="control-group">
-        <label>Color</label>
+    <label>
+        Color
         <input type="color" id="colorPicker" value="#00ffff">
-    </div>
+    </label>
 
-    <div class="control-group">
-        <label>Brush Size</label>
-        <input type="range" id="brushSize" min="2" max="40" value="8">
-    </div>
+    <label>
+        Size
+        <input type="range" id="brushSize" min="2" max="30" value="8">
+    </label>
+
+    <button class="clearBtn" id="clearBtn">
+        Clear
+    </button>
 </div>
 
-<div id="status" class="status-paused">
-    PAUSED
+<div class="status" id="status">
+    Waiting...
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+<script type="module">
 
-<script>
+import {
+    HandLandmarker,
+    FilesetResolver
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
 const video = document.getElementById("video");
-const drawCanvas = document.getElementById("drawCanvas");
-const debugCanvas = document.getElementById("debugCanvas");
 
+const drawCanvas = document.getElementById("drawCanvas");
 const drawCtx = drawCanvas.getContext("2d");
-const debugCtx = debugCanvas.getContext("2d");
+
+const landmarkCanvas = document.getElementById("landmarkCanvas");
+const landmarkCtx = landmarkCanvas.getContext("2d");
+
+const statusEl = document.getElementById("status");
 
 const colorPicker = document.getElementById("colorPicker");
 const brushSize = document.getElementById("brushSize");
-const statusEl = document.getElementById("status");
 
-let currentColor = colorPicker.value;
-let currentSize = parseInt(brushSize.value);
-
+let handLandmarker;
+let drawing = false;
 let lastPoint = null;
-let currentHand = null;
-let currentMode = "PAUSED";
-let clearCooldown = false;
 
-function resizeCanvas(){
+function resizeCanvases(){
     drawCanvas.width = window.innerWidth;
     drawCanvas.height = window.innerHeight;
 
-    debugCanvas.width = window.innerWidth;
-    debugCanvas.height = window.innerHeight;
+    landmarkCanvas.width = window.innerWidth;
+    landmarkCanvas.height = window.innerHeight;
+}
+resizeCanvases();
+window.addEventListener("resize", resizeCanvases);
+
+async function startCamera(){
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+        video:{
+            width:{ideal:1280},
+            height:{ideal:720},
+            facingMode:"user"
+        },
+        audio:false
+    });
+
+    video.srcObject = stream;
+
+    return new Promise(resolve=>{
+        video.onloadedmetadata=()=>{
+            video.play();
+            resolve();
+        };
+    });
 }
 
-resizeCanvas();
-window.addEventListener("resize", resizeCanvas);
+async function loadMediaPipe(){
 
-colorPicker.addEventListener("input", ()=>{
-    currentColor = colorPicker.value;
-});
+    const vision = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+    );
 
-brushSize.addEventListener("input", ()=>{
-    currentSize = parseInt(brushSize.value);
-});
-
-function setStatus(mode){
-    currentMode = mode;
-    statusEl.textContent = mode;
-
-    statusEl.className = "";
-
-    if(mode==="DRAWING"){
-        statusEl.classList.add("status-drawing");
-    }else if(mode==="CLEARING"){
-        statusEl.classList.add("status-clearing");
-    }else{
-        statusEl.classList.add("status-paused");
-    }
-}
-
-function fingerExtended(tip,pip,landmarks){
-    return landmarks[tip].y < landmarks[pip].y;
-}
-
-function detectGesture(landmarks){
-
-    const indexUp = fingerExtended(8,6,landmarks);
-    const middleUp = fingerExtended(12,10,landmarks);
-    const ringUp = fingerExtended(16,14,landmarks);
-    const pinkyUp = fingerExtended(20,18,landmarks);
-
-    const total =
-        (indexUp?1:0)+
-        (middleUp?1:0)+
-        (ringUp?1:0)+
-        (pinkyUp?1:0);
-
-    if(indexUp && total===1){
-        return "DRAWING";
-    }
-
-    if(indexUp && middleUp && ringUp && pinkyUp){
-        return "CLEARING";
-    }
-
-    return "PAUSED";
+    handLandmarker = await HandLandmarker.createFromOptions(
+        vision,
+        {
+            baseOptions:{
+                modelAssetPath:
+                "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+            },
+            runningMode:"VIDEO",
+            numHands:1
+        }
+    );
 }
 
 function clearDrawing(){
-    drawCtx.clearRect(
-        0,
-        0,
-        drawCanvas.width,
-        drawCanvas.height
-    );
+    drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+}
+
+document.getElementById("clearBtn").onclick = clearDrawing;
+
+function distance(a,b){
+    return Math.hypot(a.x-b.x,a.y-b.y);
+}
+
+function isFingerExtended(tip,pip){
+    return tip.y < pip.y;
+}
+
+function detectGesture(hand){
+
+    const indexExtended =
+        isFingerExtended(hand[8], hand[6]);
+
+    const middleExtended =
+        isFingerExtended(hand[12], hand[10]);
+
+    const ringExtended =
+        isFingerExtended(hand[16], hand[14]);
+
+    const pinkyExtended =
+        isFingerExtended(hand[20], hand[18]);
+
+    const count =
+        Number(indexExtended)+
+        Number(middleExtended)+
+        Number(ringExtended)+
+        Number(pinkyExtended);
+
+    if(
+        indexExtended &&
+        !middleExtended &&
+        !ringExtended &&
+        !pinkyExtended
+    ){
+        return "DRAW";
+    }
+
+    if(count >= 4){
+        return "CLEAR";
+    }
+
+    if(count === 0){
+        return "PAUSE";
+    }
+
+    return "PAUSE";
 }
 
 function drawNeonLine(x1,y1,x2,y2){
 
-    drawCtx.save();
+    const color = colorPicker.value;
+    const size = Number(brushSize.value);
 
     drawCtx.lineCap="round";
     drawCtx.lineJoin="round";
 
-    drawCtx.strokeStyle=currentColor;
-    drawCtx.lineWidth=currentSize;
+    drawCtx.shadowBlur=size*3;
+    drawCtx.shadowColor=color;
 
-    drawCtx.shadowColor=currentColor;
-    drawCtx.shadowBlur=currentSize*2;
+    drawCtx.strokeStyle=color;
+    drawCtx.lineWidth=size;
 
     drawCtx.beginPath();
     drawCtx.moveTo(x1,y1);
     drawCtx.lineTo(x2,y2);
     drawCtx.stroke();
 
-    drawCtx.restore();
+    drawCtx.shadowBlur=size*6;
+    drawCtx.lineWidth=size/2;
+
+    drawCtx.beginPath();
+    drawCtx.moveTo(x1,y1);
+    drawCtx.lineTo(x2,y2);
+    drawCtx.stroke();
 }
 
-function render(){
+function drawLandmarks(hand){
 
-    requestAnimationFrame(render);
-
-    debugCtx.clearRect(
+    landmarkCtx.clearRect(
         0,
         0,
-        debugCanvas.width,
-        debugCanvas.height
+        landmarkCanvas.width,
+        landmarkCanvas.height
     );
 
-    if(!currentHand){
-        lastPoint = null;
+    landmarkCtx.fillStyle="#00ff88";
+
+    for(const lm of hand){
+
+        const x =
+            (1-lm.x) *
+            landmarkCanvas.width;
+
+        const y =
+            lm.y *
+            landmarkCanvas.height;
+
+        landmarkCtx.beginPath();
+        landmarkCtx.arc(x,y,4,0,Math.PI*2);
+        landmarkCtx.fill();
+    }
+}
+
+let lastVideoTime = -1;
+
+async function predict(){
+
+    if(video.readyState < 2){
+        requestAnimationFrame(predict);
         return;
     }
 
-    const landmarks = currentHand;
-    const gesture = detectGesture(landmarks);
+    if(video.currentTime !== lastVideoTime){
 
-    setStatus(gesture);
+        lastVideoTime = video.currentTime;
 
-    if(gesture==="CLEARING"){
-
-        if(!clearCooldown){
-
-            clearCooldown=true;
-            clearDrawing();
-
-            setStatus("CLEARING");
-
-            setTimeout(()=>{
-                clearCooldown=false;
-            },800);
-        }
-
-        lastPoint=null;
-    }
-
-    const tip = landmarks[8];
-
-    const x =
-        (1-tip.x) *
-        drawCanvas.width;
-
-    const y =
-        tip.y *
-        drawCanvas.height;
-
-    if(gesture==="DRAWING"){
-
-        if(lastPoint){
-
-            drawNeonLine(
-                lastPoint.x,
-                lastPoint.y,
-                x,
-                y
+        const result =
+            handLandmarker.detectForVideo(
+                video,
+                performance.now()
             );
+
+        landmarkCtx.clearRect(
+            0,
+            0,
+            landmarkCanvas.width,
+            landmarkCanvas.height
+        );
+
+        if(result.landmarks.length){
+
+            const hand = result.landmarks[0];
+
+            drawLandmarks(hand);
+
+            const gesture =
+                detectGesture(hand);
+
+            if(gesture==="CLEAR"){
+
+                statusEl.textContent =
+                    "🧹 Clear";
+
+                clearDrawing();
+                drawing=false;
+                lastPoint=null;
+            }
+
+            else if(gesture==="PAUSE"){
+
+                statusEl.textContent =
+                    "⏸ Paused";
+
+                drawing=false;
+                lastPoint=null;
+            }
+
+            else if(gesture==="DRAW"){
+
+                statusEl.textContent =
+                    "✏️ Drawing";
+
+                drawing=true;
+
+                const tip = hand[8];
+
+                const x =
+                    (1-tip.x) *
+                    drawCanvas.width;
+
+                const y =
+                    tip.y *
+                    drawCanvas.height;
+
+                if(lastPoint){
+
+                    drawNeonLine(
+                        lastPoint.x,
+                        lastPoint.y,
+                        x,
+                        y
+                    );
+                }
+
+                lastPoint={x,y};
+            }
+
+        }else{
+
+            statusEl.textContent =
+                "No Hand";
+
+            drawing=false;
+            lastPoint=null;
         }
-
-        lastPoint={x,y};
-
-    }else{
-        lastPoint=null;
     }
 
-    drawConnectors(
-        debugCtx,
-        landmarks,
-        HAND_CONNECTIONS,
-        {
-            color:"#00FF00",
-            lineWidth:2
-        }
-    );
-
-    drawLandmarks(
-        debugCtx,
-        landmarks,
-        {
-            color:"#FF0000",
-            radius:4
-        }
-    );
+    requestAnimationFrame(predict);
 }
 
-const hands = new Hands({
-    locateFile:(file)=>{
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    }
-});
-
-hands.setOptions({
-    maxNumHands:1,
-    modelComplexity:1,
-    minDetectionConfidence:0.7,
-    minTrackingConfidence:0.7
-});
-
-hands.onResults((results)=>{
-
-    if(
-        results.multiHandLandmarks &&
-        results.multiHandLandmarks.length
-    ){
-        currentHand =
-            results.multiHandLandmarks[0];
-    }else{
-        currentHand=null;
-    }
-});
-
-async function startCamera(){
+(async()=>{
 
     try{
 
-        const stream =
-            await navigator.mediaDevices.getUserMedia({
-                video:{
-                    facingMode:"user"
-                },
-                audio:false
-            });
+        await startCamera();
 
-        video.srcObject=stream;
+        // CAMERA STAYS FULLSCREEN
+        // DRAWING CANVAS IS TRANSPARENT
 
-        await video.play();
+        await loadMediaPipe();
 
-        const camera = new Camera(
-            video,
-            {
-                onFrame: async ()=>{
-                    await hands.send({
-                        image: video
-                    });
-                },
-                width:1280,
-                height:720
-            }
-        );
-
-        camera.start();
+        predict();
 
     }catch(err){
 
-        alert(
-            "Camera access denied or unavailable."
-        );
-
         console.error(err);
-    }
-}
 
-startCamera();
-render();
+        statusEl.textContent =
+            "Camera Permission Required";
+    }
+
+})();
 </script>
 
 </body>
